@@ -348,6 +348,15 @@
             <h2>Welcome!</h2>
             <h3>You will see a series of videos and ads that were chosen at random.</h3>
             <p>Scroll through them like how you would normally do on short-form media platforms. Click the heart button to like any content that you find interesting or persuasive. Click the content to play or pause. Click the speaker button to unmute or mute audio. The recommended scrolling time is 10 minutes, and the site will automatically cut you off after 12 minutes.</p>
+
+            <!-- Username section-->
+            <div style="margin: 20px 0;">
+                <input type="text" id="usernameInput" placeholder="Enter your username" 
+                   style="padding: 10px; border: 1px solid #ccc; border-radius: 5px; width: 200px; font-size: 16px;">
+                <div id="usernameError" style="color: #ff6b6b; font-size: 14px; margin-top: 5px; display: none;">
+                    Please enter the username you created in the survey
+                </div>
+            </div>
             <button class="popup-button" onclick="app.startSession()">I understand</button>
         </div>
     </div>
@@ -372,6 +381,7 @@
                 currentVideo: 1,
                 likedVideos: new Set(),
                 userId: null,
+                username: null,
                 videos: {},
                 videoData: [],
                 userPreferredAudioState: false,
@@ -404,18 +414,31 @@
 
             // Start session and timer
             startSession() {
+                const usernameInput = document.getElementById('usernameInput');
+                const usernameError = document.getElementById('usernameError');
+                const username = usernameInput.value.trim();
+    
+                if (!username) {
+                    usernameError.style.display = 'block';
+                    usernameInput.focus();
+                    return;
+                }
+    
+                // Store username in state
+                this.state.username = username;
+    
                 this.state.sessionStarted = true;
                 document.getElementById('instructionsPopup').style.display = 'none';
                 document.getElementById('debugInfo').style.display = 'none';
-                
+    
                 this.state.timerInterval = setInterval(() => {
                     this.state.timeRemaining--;
-                    
+        
                     if (this.state.timeRemaining === 2 * 60 && !this.state.twoMinuteWarningShown) {
                         this.showWarning('2 minutes remaining');
                         this.state.twoMinuteWarningShown = true;
                     }
-                    
+        
                     if (this.state.timeRemaining <= 0) {
                         clearInterval(this.state.timerInterval);
                         this.freezeAndShowTimeUp();
@@ -713,6 +736,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             user_id: this.state.userId,
+                            username: this.state.username,
                             video_id: videoId
                         })
                     });

@@ -38,6 +38,22 @@ def init_db():
     conn.commit()
     conn.close()
 
+def update_db_schema():
+    """Update database schema to incldue username"""
+    conn = sqlite3.connect('likes.db')
+    cursor = conn.cursor()
+
+    # Check if username column exists
+    cursor.execute("PRAGMA table_info(user_likes)")
+    columns = [column[1] for column in cursor.fetchall()]
+
+    if 'username' not in columns:
+        cursor.execute('ALTER TABLE user_likes ADD COLUMN username TEXT')
+        print("Added username column to user_likes table")
+
+    conn.commit()
+    conn.close()
+
 def load_videos():
     """Load videos from filesystem into database"""
     conn = sqlite3.connect('likes.db')
@@ -264,9 +280,10 @@ def toggle_like():
     try:
         data = request.get_json()
         user_id = data.get('user_id')
+        username = data.get('username')
         video_id = data.get('video_id')
         
-        print(f"Like request - User: {user_id}, Video: {video_id}")
+        print(f"Like request - User: {user_id}, Username: {username}, Video: {video_id}")
         
         # If no user_id provided, get it from session
         if not user_id:
@@ -276,6 +293,9 @@ def toggle_like():
         
         if not video_id:
             return jsonify({'error': 'Missing video_id'}), 400
+        
+        if not username:
+            return jsonify({'error': 'Missing username'}), 400
         
         conn = sqlite3.connect('likes.db')
         cursor = conn.cursor()
@@ -300,9 +320,9 @@ def toggle_like():
             liked = False
             print(f"Unliked video {video_id}")
         else:
-            # Like - add the like
-            cursor.execute('INSERT INTO user_likes (user_id, video_id) VALUES (?, ?)', 
-                           (user_id, video_id))
+            # Like - add the like with username
+            cursor.execute('INSERT INTO user_likes (user_id, video_id, username) VALUES (?, ?, ?)', 
+                           (user_id, video_id, username))
             cursor.execute('UPDATE records SET total_likes = total_likes + 1 WHERE id = ?', 
                            (video_id,))
             liked = True
@@ -319,7 +339,8 @@ def toggle_like():
         response = {
             'liked': liked,
             'total_likes': total_likes,
-            'user_id': user_id
+            'user_id': user_id,
+            'username': username
         }
         print(f"Like response: {response}")
         return jsonify(response)
@@ -624,6 +645,7 @@ def get_stats():
     
 if __name__ == '__main__':
     init_db()
+    update_db_schema()
     video_count = load_videos()
     print(f"Database initialized with {video_count} videos")
     print("Starting server...")
