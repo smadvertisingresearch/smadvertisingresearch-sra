@@ -29,9 +29,10 @@ def init_db():
             id INTEGER PRIMARY KEY,
             user_id TEXT,
             video_id INTEGER,
+            username TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(video_id) REFERENCES records(id),
-            UNIQUE(user_id, video_id)
+            UNIQUE(username, video_id)
         )
     ''')
 
@@ -125,8 +126,6 @@ def load_videos():
     print(f"Total videos found: {len(video_files)}")
     print(f"Total ads found: {len(ad_files)}")
     
-    # Clear existing records to avoid duplicates
-    cursor.execute('DELETE FROM records')
     
     # Insert videos into database
     added_count = 0
@@ -191,10 +190,6 @@ def create_video_sequence():
         'total_likes': a[3]
     } for a in ads]
     
-    # Shuffle both lists to add variety
-    random.shuffle(video_list)
-    random.shuffle(ad_list)
-    
     # Create the sequence: 2 videos, 1 ad, repeat
     sequence = []
     video_index = 0
@@ -231,6 +226,28 @@ def create_video_sequence():
         print(f"{i+1}. {item_type}: {item['filename']}")
     
     return sequence
+
+def check_database_integrity():
+    """Check if the database is working correctly"""
+    conn = sqlite3.connect('likes.db')
+    cursor = conn.cursor()
+    
+    # Check records table
+    cursor.execute('SELECT COUNT(*) FROM records')
+    record_count = cursor.fetchone()[0]
+    print(f"Total records in database: {record_count}")
+    
+    # Check user_likes table
+    cursor.execute('SELECT COUNT(*) FROM user_likes')
+    likes_count = cursor.fetchone()[0]
+    print(f"Total likes in database: {likes_count}")
+    
+    # Check for any records with likes
+    cursor.execute('SELECT filename, total_likes FROM records WHERE total_likes > 0')
+    liked_records = cursor.fetchall()
+    print(f"Records with likes: {liked_records}")
+    
+    conn.close()
 
 # Routes
 @app.route('/')
@@ -279,17 +296,10 @@ def get_videos():
 def toggle_like():
     try:
         data = request.get_json()
-        user_id = data.get('user_id')
         username = data.get('username')
         video_id = data.get('video_id')
         
-        print(f"Like request - User: {user_id}, Username: {username}, Video: {video_id}")
-        
-        # If no user_id provided, get it from session
-        if not user_id:
-            if 'user_id' not in session:
-                session['user_id'] = str(uuid.uuid4())
-            user_id = session['user_id']
+        print(f"Like request - Username: {username}, Video: {video_id}")
         
         if not video_id:
             return jsonify({'error': 'Missing video_id'}), 400
@@ -307,26 +317,28 @@ def toggle_like():
             return jsonify({'error': 'Video not found'}), 404
         
         # Check if user already liked this video
-        cursor.execute('SELECT id FROM user_likes WHERE user_id = ? AND video_id = ?', 
-                       (user_id, video_id))
+        cursor.execute('SELECT id FROM user_likes WHERE username = ? AND video_id = ?', 
+                       (username, video_id))
         existing_like = cursor.fetchone()
         
         if existing_like:
             # Unlike - remove the like
-            cursor.execute('DELETE FROM user_likes WHERE user_id = ? AND video_id = ?', 
-                           (user_id, video_id))
+            cursor.execute('DELETE FROM user_likes WHERE username = ? AND video_id = ?', 
+                           (username, video_id))
             cursor.execute('UPDATE records SET total_likes = total_likes - 1 WHERE id = ? AND total_likes > 0', 
                            (video_id,))
             liked = False
             print(f"Unliked video {video_id}")
         else:
             # Like - add the like with username
-            cursor.execute('INSERT INTO user_likes (user_id, video_id, username) VALUES (?, ?, ?)', 
-                           (user_id, video_id, username))
+            cursor.execute('INSERT INTO user_likes (video_id, username) VALUES (?, ?)', 
+                           (video_id, username))
             cursor.execute('UPDATE records SET total_likes = total_likes + 1 WHERE id = ?', 
                            (video_id,))
             liked = True
             print(f"Liked video {video_id}")
+        
+        conn.commit()
         
         # Get updated like count
         cursor.execute('SELECT total_likes FROM records WHERE id = ?', (video_id,))
@@ -339,7 +351,6 @@ def toggle_like():
         response = {
             'liked': liked,
             'total_likes': total_likes,
-            'user_id': user_id,
             'username': username
         }
         print(f"Like response: {response}")
@@ -647,6 +658,7 @@ if __name__ == '__main__':
     init_db()
     update_db_schema()
     video_count = load_videos()
+    check_database_integrity()
     print(f"Database initialized with {video_count} videos")
     print("Starting server...")
     print("Main site: http://localhost:8000")
